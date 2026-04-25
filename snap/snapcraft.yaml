@@ -5,7 +5,7 @@ version: 'git'
 summary: OpenShell CLI and Gateway
 description: |
   OpenShell is an agent manager that runs sandboxed agents in lightweight
-  microVMs (libkrun) or on Kubernetes.
+  microVMs (libkrun), LXD virtual machines, or on Kubernetes.
 
 contact: https://github.com/NVIDIA/OpenShell/issues
 license: Apache-2.0
@@ -33,11 +33,13 @@ apps:
     daemon: simple
     environment:
       KUBECONFIG: $SNAP_REAL_HOME/.kube/config
+      LXD_DIR: /var/snap/lxd/common/lxd
     plugs:
       - network
       - network-bind
       - kube-config
       - kvm
+      - lxd
 
 plugs:
   kube-config:
@@ -67,7 +69,7 @@ parts:
       - openssh-client
       - curl
     rust-features: []
-    rust-path: ["crates/openshell-cli", "crates/openshell-server", "crates/openshell-driver-vm"]
+    rust-path: ["crates/openshell-cli", "crates/openshell-server", "crates/openshell-driver-vm", "crates/openshell-sandbox"]
     override-pull: |
       # Pull the source using snapcraft.
       craftctl default

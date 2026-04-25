@@ -1,7 +1,10 @@
 #!/bin/bash
 set -e
 
-
+# Read driver from snap configuration (set via: snap set openshell driver=lxd)
+if [ -z "$DRIVER" ]; then
+    DRIVER="$(snapctl get driver 2>/dev/null)" || true
+fi
 
 # Ensure UDS dir exists
 mkdir -p "$SNAP_COMMON/run"
@@ -31,7 +34,22 @@ fi
 GRPC_ARGS=()
 if [ -z "$OPENSHELL_GRPC_ENDPOINT" ]; then
     SERVER_PORT="${OPENSHELL_SERVER_PORT:-8080}"
-    GRPC_ARGS=("--grpc-endpoint" "http://host.containers.internal:${SERVER_PORT}")
+    if [ "${DRIVER}" = "lxd" ]; then
+        # LXD VMs sit on a bridge network. The callback endpoint must be the
+        # host-side bridge IP (the gateway portion of the CIDR), which is
+        # routable from inside the VM. Default CIDR: 10.100.200.1/24
+        LXD_CIDR="${OPENSHELL_LXD_NETWORK_CIDR:-10.100.200.1/24}"
+        LXD_HOST_IP="${LXD_CIDR%%/*}"
+        GRPC_ARGS=("--grpc-endpoint" "http://${LXD_HOST_IP}:${SERVER_PORT}")
+    else
+        GRPC_ARGS=("--grpc-endpoint" "http://host.containers.internal:${SERVER_PORT}")
+    fi
+fi
+
+# LXD driver: ensure the supervisor binary path and LXD socket are set
+if [ "${DRIVER}" = "lxd" ]; then
+    export OPENSHELL_SUPERVISOR_PATH="${OPENSHELL_SUPERVISOR_PATH:-$SNAP/bin/openshell-sandbox}"
+    export OPENSHELL_LXD_SOCKET="${OPENSHELL_LXD_SOCKET:-/var/snap/lxd/common/lxd/unix.socket}"
 fi
 
 if [ -n "$PODMAN_SOCKET" ]; then

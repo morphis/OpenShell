@@ -47,6 +47,7 @@ pub const CDI_GPU_DEVICE_ALL: &str = "nvidia.com/gpu=all";
 #[serde(rename_all = "snake_case")]
 pub enum ComputeDriverKind {
     Kubernetes,
+    Lxd,
     Vm,
     Podman,
 }
@@ -56,6 +57,7 @@ impl ComputeDriverKind {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Kubernetes => "kubernetes",
+            Self::Lxd => "lxd",
             Self::Vm => "vm",
             Self::Podman => "podman",
         }
@@ -74,10 +76,11 @@ impl FromStr for ComputeDriverKind {
     fn from_str(value: &str) -> Result<Self, Self::Err> {
         match value.trim().to_ascii_lowercase().as_str() {
             "kubernetes" => Ok(Self::Kubernetes),
+            "lxd" => Ok(Self::Lxd),
             "vm" => Ok(Self::Vm),
             "podman" => Ok(Self::Podman),
             other => Err(format!(
-                "unsupported compute driver '{other}'. expected one of: kubernetes, vm, podman"
+                "unsupported compute driver '{other}'. expected one of: kubernetes, lxd, vm, podman"
             )),
         }
     }
@@ -505,6 +508,10 @@ mod tests {
         assert_eq!(
             "kubernetes".parse::<ComputeDriverKind>().unwrap(),
             ComputeDriverKind::Kubernetes
+        );
+        assert_eq!(
+            "lxd".parse::<ComputeDriverKind>().unwrap(),
+            ComputeDriverKind::Lxd
         );
         assert_eq!(
             "vm".parse::<ComputeDriverKind>().unwrap(),

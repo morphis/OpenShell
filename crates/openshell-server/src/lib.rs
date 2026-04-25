@@ -49,6 +49,7 @@ pub use grpc::OpenShellService;
 pub use http::{health_router, http_router, metrics_router};
 pub use multiplex::{MultiplexService, MultiplexedService};
 use openshell_driver_kubernetes::KubernetesComputeConfig;
+use openshell_driver_lxd::LxdComputeConfig;
 use persistence::Store;
 use sandbox_index::SandboxIndex;
 use sandbox_watch::SandboxWatchBus;
@@ -437,6 +438,84 @@ async fn build_compute_runtime(
             .await
             .map_err(|e| Error::execution(format!("failed to create compute runtime: {e}")))
         }
+        ComputeDriverKind::Lxd => {
+            use openshell_core::config::{DEFAULT_SSH_HANDSHAKE_SKEW_SECS, DEFAULT_SSH_PORT};
+            use openshell_driver_lxd::config::{
+                DEFAULT_BASE_IMAGE, DEFAULT_IMAGE_SERVER, DEFAULT_LXD_PROJECT, DEFAULT_LXD_SOCKET,
+                DEFAULT_NETWORK_CIDR, DEFAULT_NETWORK_NAME, DEFAULT_OPERATION_TIMEOUT_SECS,
+                DEFAULT_STORAGE_DRIVER, DEFAULT_STORAGE_POOL, DEFAULT_STORAGE_POOL_SIZE,
+                DEFAULT_SUPERVISOR_PATH,
+            };
+
+            let lxd_config = LxdComputeConfig {
+                socket_path: std::env::var("OPENSHELL_LXD_SOCKET")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from(DEFAULT_LXD_SOCKET)),
+                lxd_project: std::env::var("OPENSHELL_LXD_PROJECT")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_LXD_PROJECT.to_string()),
+                storage_pool: std::env::var("OPENSHELL_LXD_STORAGE_POOL")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_STORAGE_POOL.to_string()),
+                storage_driver: std::env::var("OPENSHELL_LXD_STORAGE_DRIVER")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_STORAGE_DRIVER.to_string()),
+                storage_pool_size: std::env::var("OPENSHELL_LXD_STORAGE_POOL_SIZE")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_STORAGE_POOL_SIZE.to_string()),
+                network_name: std::env::var("OPENSHELL_LXD_NETWORK")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_NETWORK_NAME.to_string()),
+                network_cidr: std::env::var("OPENSHELL_LXD_NETWORK_CIDR")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_NETWORK_CIDR.to_string()),
+                base_image_alias: std::env::var("OPENSHELL_SANDBOX_IMAGE")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_BASE_IMAGE.to_string()),
+                image_server: std::env::var("OPENSHELL_LXD_IMAGE_SERVER")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| DEFAULT_IMAGE_SERVER.to_string()),
+                supervisor_path: std::env::var("OPENSHELL_SUPERVISOR_PATH")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| std::path::PathBuf::from(DEFAULT_SUPERVISOR_PATH)),
+                grpc_endpoint: config.grpc_endpoint.clone(),
+                ssh_handshake_secret: config.ssh_handshake_secret.clone(),
+                ssh_handshake_skew_secs: std::env::var("OPENSHELL_SSH_HANDSHAKE_SKEW_SECS")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(DEFAULT_SSH_HANDSHAKE_SKEW_SECS),
+                ssh_port: std::env::var("OPENSHELL_SSH_PORT")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(DEFAULT_SSH_PORT),
+                operation_timeout_secs: std::env::var("OPENSHELL_LXD_OPERATION_TIMEOUT")
+                    .ok()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(DEFAULT_OPERATION_TIMEOUT_SECS),
+            };
+            ComputeRuntime::new_lxd(
+                lxd_config,
+                store,
+                sandbox_index,
+                sandbox_watch_bus,
+                tracing_log_bus,
+                supervisor_sessions,
+            )
+            .await
+            .map_err(|e| Error::execution(format!("failed to create compute runtime: {e}")))
+        }
     }
 }
 
@@ -447,6 +526,7 @@ fn configured_compute_driver(config: &Config) -> Result<ComputeDriverKind> {
         )),
         [
             driver @ (ComputeDriverKind::Kubernetes
+            | ComputeDriverKind::Lxd
             | ComputeDriverKind::Vm
             | ComputeDriverKind::Podman),
         ] => Ok(*driver),
@@ -504,6 +584,15 @@ mod tests {
                 .contains("multiple compute drivers are not supported yet")
         );
         assert!(err.to_string().contains("kubernetes,podman"));
+    }
+
+    #[test]
+    fn configured_compute_driver_accepts_lxd() {
+        let config = Config::new(None).with_compute_drivers([ComputeDriverKind::Lxd]);
+        assert_eq!(
+            configured_compute_driver(&config).unwrap(),
+            ComputeDriverKind::Lxd
+        );
     }
 
     #[test]

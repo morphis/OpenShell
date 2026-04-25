@@ -10,6 +10,30 @@ commands work with a remote Kubernetes cluster.
 
 The snap can use Podman locally too.
 
+## Get started with LXD VM sandboxes:
+
+LXD provides a higher-fidelity VM experience using QEMU-backed virtual machines. It requires
+the LXD snap to be installed and initialized.
+
+```
+sudo snap install lxd
+sudo lxd init                              # Accept defaults for ZFS-backed storage
+sudo snap install openshell
+sudo snap connect openshell:lxd            # Grant access to the LXD socket
+```
+
+Configure the gateway to use the LXD driver:
+
+```
+sudo snap set openshell driver=lxd
+```
+
+The gateway will restart automatically. Create a sandbox:
+
+```
+openshell sandbox create
+```
+
 ## Get started with local MicroVM sandboxes:
 
 ```

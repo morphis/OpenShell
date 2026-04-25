@@ -1,0 +1,18 @@
+#!/bin/bash
+set -e
+
+# Validate the driver option if set.
+driver="$(snapctl get driver)" || true
+if [ -n "$driver" ]; then
+    case "$driver" in
+        vm|lxd|podman|kubernetes)
+            ;;
+        *)
+            echo "Unsupported driver '$driver'. Expected one of: vm, lxd, podman, kubernetes" >&2
+            exit 1
+            ;;
+    esac
+fi
+
+# Restart the gateway so it picks up the new configuration.
+snapctl restart "${SNAP_INSTANCE_NAME}.gateway" 2>/dev/null || true
