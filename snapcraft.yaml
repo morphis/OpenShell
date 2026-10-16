@@ -68,6 +68,19 @@ description: |
 base: core24
 grade: stable
 confinement: strict
+# Out-of-tree compute drivers (for example openshell-driver-lxd) plug this slot
+# to publish their gRPC socket into the gateway's own state directory. It must
+# be a `write:` source: snapd only grants a plug the AppArmor write access that
+# an AF_UNIX connect needs on a writable content path. A connected driver drops
+# a descriptor here that the gateway wrapper turns into the compute-driver
+# selection.
+slots:
+  compute-driver:
+    interface: content
+    content: openshell-compute-driver
+    source:
+      write:
+        - $SNAP_COMMON/compute-driver
 # The system :docker slot was added in snapd 2.76, so this is the minimum
 # required version. Snapd 2.77 allowed manual connection to that slot without
 # snap-declaration overrides from the store, such as when installing a locally-

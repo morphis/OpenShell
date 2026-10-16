@@ -8,17 +8,22 @@ hook=${1:?Usage: test-snap-install-hook.sh <install-hook>}
 work=$(mktemp -d "${TMPDIR:-/tmp}/openshell snap install hook.XXXXXX")
 trap 'rm -rf "$work"' EXIT
 
-mkdir -p "$work/bin"
+mkdir -p "$work/bin" "$work/common"
 cat >"$work/bin/snapctl" <<EOF
 #!/bin/sh
 printf '%s\n' "\$*" >>"$work/snapctl.log"
 EOF
 chmod 755 "$work/bin/snapctl"
 
-PATH="$work/bin:$PATH" SNAP_INSTANCE_NAME=openshell "$hook"
+PATH="$work/bin:$PATH" SNAP_INSTANCE_NAME=openshell SNAP_COMMON="$work/common" "$hook"
 if [[ $(cat "$work/snapctl.log") != 'set gateway-mode=user' ]]; then
   echo "FAIL: install hook did not initialize user gateway mode" >&2
   cat "$work/snapctl.log" >&2
+  exit 1
+fi
+
+if [[ ! -d "$work/common/compute-driver" ]]; then
+  echo "FAIL: install hook did not create the compute-driver content source" >&2
   exit 1
 fi
 

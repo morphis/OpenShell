@@ -12,6 +12,7 @@ snap="$work/snap"
 common="$work/common"
 log="$work/calls"
 expected="$work/expected"
+driver_env="$work/driver-env"
 mkdir -p "$snap/bin" "$common"
 
 cat >"$snap/bin/openshell-gateway" <<'EOF'
@@ -21,6 +22,9 @@ printf '%s|config=%s|db=%s|tls=%s\n' \
   "${OPENSHELL_GATEWAY_CONFIG:-}" \
   "${OPENSHELL_DB_URL:-}" \
   "${OPENSHELL_LOCAL_TLS_DIR:-}" >>"$FAKE_GATEWAY_LOG"
+printf 'driver=%s|socket=%s\n' \
+  "${OPENSHELL_COMPUTE_DRIVER:-}" \
+  "${OPENSHELL_COMPUTE_DRIVER_SOCKET:-}" >>"${FAKE_DRIVER_ENV:-/dev/null}"
 if [ "${1:-}:${2:-}" = config:preflight ] && [ "${FAKE_PREFLIGHT_FAIL:-}" = 1 ]; then
   exit 42
 fi
@@ -35,6 +39,7 @@ run_system_wrapper() {
     OPENSHELL_DB_URL="sqlite:$common/gateway.db?mode=rwc" \
     OPENSHELL_LOCAL_TLS_DIR="$common/tls" \
     FAKE_GATEWAY_LOG="$log" \
+    FAKE_DRIVER_ENV="$driver_env" \
     "$wrapper" "$@"
 }
 
@@ -120,6 +125,34 @@ env -u OPENSHELL_GATEWAY_CONFIG \
 assert_log "config preflight -- --trace|config=|db=|tls=$user_tls
 generate-certs --output-dir $user_tls --server-san host.openshell.internal|config=|db=|tls=$user_tls
 --trace|config=|db=|tls=$user_tls"
+
+# A descriptor published by a connected compute driver selects the driver and
+# the interface's fixed socket path, without the operator setting anything.
+rm -f "$common/gateway.toml"
+mkdir -p "$common/compute-driver"
+printf 'driver_name=lxd\n' >"$common/compute-driver/driver.conf"
+: >"$log"
+: >"$driver_env"
+run_system_wrapper --trace
+assert_log "config preflight -- --trace|config=|db=sqlite:$common/gateway.db?mode=rwc|tls=$common/tls
+generate-certs --output-dir $common/tls --server-san host.openshell.internal|config=|db=sqlite:$common/gateway.db?mode=rwc|tls=$common/tls
+--trace|config=|db=sqlite:$common/gateway.db?mode=rwc|tls=$common/tls"
+if ! grep -Fq "driver=lxd|socket=$common/compute-driver/openshell-driver.sock" "$driver_env"; then
+  echo "FAIL: wrapper did not select the connected compute driver" >&2
+  cat "$driver_env" >&2
+  exit 1
+fi
+
+# A descriptor with an unusable name is ignored rather than passed through.
+printf 'driver_name=bad/name\n' >"$common/compute-driver/driver.conf"
+: >"$driver_env"
+run_system_wrapper --trace
+if grep -Fq "driver=bad" "$driver_env"; then
+  echo "FAIL: wrapper accepted an invalid driver name" >&2
+  cat "$driver_env" >&2
+  exit 1
+fi
+rm -rf "$common/compute-driver"
 
 if env -u OPENSHELL_LOCAL_TLS_DIR -u XDG_STATE_HOME \
   SNAP="$snap" FAKE_GATEWAY_LOG="$log" "$wrapper" --trace \

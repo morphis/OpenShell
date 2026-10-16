@@ -7,4 +7,11 @@
 
 set -eu
 
+# Pre-create the content-interface source directory so a connected out-of-tree
+# compute driver can publish its socket there. snapd needs the source path to
+# exist before it can set up the mount.
+if [ -n "${SNAP_COMMON:-}" ]; then
+	mkdir -p "${SNAP_COMMON}/compute-driver"
+fi
+
 snapctl set gateway-mode=user
